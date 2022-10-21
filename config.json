@@ -1,0 +1,10 @@
+{
+    "port": "5556",
+    "telegram": {
+        "apiKey": "5473172900:AAHg6qhG32AsC3koll7EL4j401upz9U9HkE"
+    },
+    "patreon": {
+        "clientId": "MmuDglEcYLQujmnA80LkDMRsJ3ROYmWQHVzmp-BqotzDXpAPHz2wuptAstjVVfQX",
+        "clientSecret": "kvh8fmU3hcLe75F6iw0DA9eNeCcrLcaa5TONnXb4R5YEOFYlgDUfxNtoS4NEv0is"
+    }
+}

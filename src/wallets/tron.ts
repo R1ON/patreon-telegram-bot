@@ -1,0 +1,44 @@
+import { User, Wallet } from '@prisma/client';
+import { prisma } from '../prisma';
+import { createECDH, ECDH } from 'crypto';
+
+// @ts-ignore
+import TronWeb from 'tronweb';
+
+// export const TRON_TYPE = 'tron';
+
+// type TronWallet = Wallet & { type: typeof TRON_TYPE };
+
+// export async function getOrCreateWallet(user: User): Promise<TronWallet> {
+//     const wallet = await prisma.wallet.findFirst({
+//         where: {
+//             userId: user.id,
+//             type: TRON_TYPE,
+//         },
+//     });
+
+//     if (wallet) {
+//         return wallet as TronWallet;
+//     }
+// }
+
+function generateAccount() {
+    const ecdh = createECDH('secp256k1');
+    ecdh.generateKeys();
+
+    const privateKey = ecdh.getPrivateKey();
+    const publicKey = ecdh.getPublicKey();
+
+    const adress = TronWeb.utils.crypto.getAddressFromPriKey(privateKey);
+
+    return {
+        privateKey: privateKey.toString('hex').padStart(64, '0'),
+        publicKey: publicKey.toString('hex').padStart(64, '0'),
+        adress: {
+            base58: TronWeb.utils.crypto.getBase58CheckAddress(adress),
+            hex: Buffer.from(adress).toString('hex'),
+        },
+    };
+}
+
+console.log(generateAccount());

@@ -1,0 +1,27 @@
+model User {
+  id                               Int       @id @default(autoincrement())
+  email                            String?   @unique
+  telegramId                       String    @unique
+  patreonAccessToken               String?
+  patreonRefreshToken              String?
+  cryptoSubscriptionExpirationDate DateTime?
+  wallets                          Wallet[]
+}
+
+model Wallet {
+  id         Int    @id @default(autoincrement())
+  userId     Int    @unique
+  type       String
+  adress     String
+  privateKey String
+  user       User   @relation(fields: [userId], references: [id])
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
