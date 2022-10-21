@@ -1,22 +1,14 @@
 {
-  "name": "telegram-bot",
+  "name": "patreon-telegram-bot",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/R1ON/telegram-bot.git"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/R1ON/telegram-bot/issues"
-  },
-  "homepage": "https://github.com/R1ON/telegram-bot#readme",
   "dependencies": {
     "@prisma/client": "^3.14.0",
     "fastify": "^3.29.0",
