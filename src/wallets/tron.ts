@@ -5,23 +5,6 @@ import { createECDH, ECDH } from 'crypto';
 // @ts-ignore
 import TronWeb from 'tronweb';
 
-// export const TRON_TYPE = 'tron';
-
-// type TronWallet = Wallet & { type: typeof TRON_TYPE };
-
-// export async function getOrCreateWallet(user: User): Promise<TronWallet> {
-//     const wallet = await prisma.wallet.findFirst({
-//         where: {
-//             userId: user.id,
-//             type: TRON_TYPE,
-//         },
-//     });
-
-//     if (wallet) {
-//         return wallet as TronWallet;
-//     }
-// }
-
 function generateAccount() {
     const ecdh = createECDH('secp256k1');
     ecdh.generateKeys();
@@ -31,6 +14,7 @@ function generateAccount() {
 
     const adress = TronWeb.utils.crypto.getAddressFromPriKey(privateKey);
 
+    // TODO: 1:13:26
     return {
         privateKey: privateKey.toString('hex').padStart(64, '0'),
         publicKey: publicKey.toString('hex').padStart(64, '0'),
@@ -41,4 +25,42 @@ function generateAccount() {
     };
 }
 
-console.log(generateAccount());
+export const TRON_TYPE = 'tron';
+
+type TronWallet = Wallet & { type: typeof TRON_TYPE };
+
+export async function getOrCreateWallet(user: User): Promise<TronWallet> {
+    const wallet = await prisma.wallet.findFirst({
+        where: {
+            userId: user.id,
+            currency: TRON_TYPE,
+        },
+    });
+
+    if (wallet) {
+        return wallet as TronWallet;
+    }
+
+    const { adress, privateKey } = generateAccount();
+
+    return await prisma.wallet.create({
+        data: {
+            currency: TRON_TYPE,
+            user: {
+                connect: {
+                    id: user.id,
+                }
+            },
+            adress: adress.hex,
+            privateKey,
+        },
+    }) as TronWallet;
+}
+
+// async function run() {
+//     const user = await prisma.user.findFirst();
+//     const wallet = await getOrCreateWallet(user as any);
+//     console.log(wallet);
+// }
+
+// run();

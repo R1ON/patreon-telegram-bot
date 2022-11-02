@@ -6,15 +6,39 @@ model User {
   patreonRefreshToken              String?
   cryptoSubscriptionExpirationDate DateTime?
   wallets                          Wallet[]
+  invoices                         Invoice[]
 }
 
 model Wallet {
   id         Int    @id @default(autoincrement())
-  userId     Int    @unique
-  type       String
+  userId     Int
+  currency   String
   adress     String
   privateKey String
   user       User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, currency])
+}
+
+model Invoice {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  productId  Int
+  amount     Int
+  currency   String
+  status     String
+  createdAt  DateTime @default(now())
+  updateddAt DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+}
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  price       Int
+  name        String
+  description String
+  invoices    Invoice[]
 }
 
 generator client {
