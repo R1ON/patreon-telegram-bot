@@ -35,8 +35,8 @@ model Invoice {
 
 model Product {
   id          Int       @id @default(autoincrement())
+  name        String    @unique
   price       Int
-  name        String
   description String
   invoices    Invoice[]
 }

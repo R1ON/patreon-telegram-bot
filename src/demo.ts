@@ -19,7 +19,7 @@ const {
     clientSecret: patreonClientSecret,
 } = nconf.get('patreon');
 
-const httpsHost = 'https://0161-2-92-247-242.ngrok.io';
+const httpsHost = 'https://1808-147-30-14-186.ngrok.io';
 const PATREON_REDIRECT_URI = '/oauth/patreon/callback';
 
 const prisma = new PrismaClient();

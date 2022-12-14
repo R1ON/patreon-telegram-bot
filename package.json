@@ -19,6 +19,7 @@
     "undici": "^5.4.0"
   },
   "devDependencies": {
+    "@grammyjs/types": "^2.10.3",
     "@types/nconf": "^0.10.2",
     "@types/node": "^18.0.0",
     "prisma": "^3.14.0",
