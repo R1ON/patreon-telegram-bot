@@ -2,7 +2,7 @@ import { fastify } from 'fastify';
 import { init } from './init';
 import { init as initTelegram } from './telegram';
 
-const HOST = 'https://2b22-147-30-14-186.ngrok.io';
+const HOST = 'https://81fe-5-251-52-141.ngrok.io';
 
 async function run() {
     init();

@@ -33,12 +33,21 @@ model Invoice {
   product    Product  @relation(fields: [productId], references: [id])
 }
 
-model Product {
+model ProductGroup {
   id          Int       @id @default(autoincrement())
   name        String    @unique
+  description String
+  products    Product[]
+}
+
+model Product {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  groupId     Int
   price       Int
   description String
   invoices    Invoice[]
+  group       ProductGroup @relation(fields: [groupId], references: [id])
 }
 
 generator client {

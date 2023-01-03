@@ -14,16 +14,21 @@ const DURATIONS = [
 
 export async function init() {
     for (const tier of TIERS) {
+        const group = await prisma.productGroup.upsert({
+            where: { name: tier.name },
+            update: {},
+            create: { name: tier.name, description: tier.description },
+        });
+
         for (const length of DURATIONS) {
             const name = `patreon-${tier.name}-${length.duration}`;
 
             await prisma.product.upsert({
                 where: { name },
-                update: {
-        
-                },
+                update: {},
                 create: {
                     name,
+                    groupId: group.id,
                     price: 100 * tier.price * length.duration * (1 - length.discount),
                     description: `Подписка уровня ${tier.description}, месяцев: ${length.duration}`,
                 },
