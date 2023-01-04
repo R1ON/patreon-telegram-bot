@@ -25,15 +25,15 @@ function generateAccount() {
     };
 }
 
-export const TRON_TYPE = 'tron';
+export const TRON_CURRENCY = 'trx';
 
-type TronWallet = Wallet & { type: typeof TRON_TYPE };
+type TronWallet = Wallet & { currency: typeof TRON_CURRENCY };
 
 export async function getOrCreateWallet(user: User): Promise<TronWallet> {
     const wallet = await prisma.wallet.findFirst({
         where: {
             userId: user.id,
-            currency: TRON_TYPE,
+            currency: TRON_CURRENCY,
         },
     });
 
@@ -45,7 +45,7 @@ export async function getOrCreateWallet(user: User): Promise<TronWallet> {
 
     return await prisma.wallet.create({
         data: {
-            currency: TRON_TYPE,
+            currency: TRON_CURRENCY,
             user: {
                 connect: {
                     id: user.id,

@@ -22,6 +22,21 @@ const {
 const httpsHost = 'https://1808-147-30-14-186.ngrok.io';
 const PATREON_REDIRECT_URI = '/oauth/patreon/callback';
 
+// function callTelegramMethod(method: string, payload: object) {
+//     return fetch(`${TELEGRAM_BASE_URL}/${method}`, {
+//         method: 'POST',
+//         body: JSON.stringify(payload),
+//         headers: {
+//             'Content-Type': 'application/json',
+//         },
+//     }).then((value) => value.json());
+// }
+
+
+// function setWebhook(url: string) {
+//     return callTelegramMethod('setWebhook', { url })
+// }
+
 const prisma = new PrismaClient();
 const app = fastify();
 

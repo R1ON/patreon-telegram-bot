@@ -1,12 +1,15 @@
 model User {
-  id                               Int       @id @default(autoincrement())
-  email                            String?   @unique
-  telegramId                       String    @unique
-  patreonAccessToken               String?
-  patreonRefreshToken              String?
-  cryptoSubscriptionExpirationDate DateTime?
-  wallets                          Wallet[]
-  invoices                         Invoice[]
+  id                    Int       @id @default(autoincrement())
+  email                 String?   @unique
+  telegramId            String    @unique
+  balance               BigInt    @default(0)
+  subscriptionProductId Int?
+  patreonAccessToken    String?
+  patreonRefreshToken   String?
+  currentSubscribtion   Product?  @relation(fields: [subscriptionProductId], references: [id])
+  nextBillingDate       DateTime?
+  wallets               Wallet[]
+  refills               RefillRequest[]
 }
 
 model Wallet {
@@ -20,17 +23,16 @@ model Wallet {
   @@unique([userId, currency])
 }
 
-model Invoice {
+model RefillRequest {
   id         Int      @id @default(autoincrement())
   userId     Int
-  productId  Int
-  amount     Int
+  amount     Int?
+  price      BigInt?
   currency   String
   status     String
   createdAt  DateTime @default(now())
   updateddAt DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id])
-  product    Product  @relation(fields: [productId], references: [id])
 }
 
 model ProductGroup {
@@ -46,8 +48,8 @@ model Product {
   groupId     Int
   price       Int
   description String
-  invoices    Invoice[]
   group       ProductGroup @relation(fields: [groupId], references: [id])
+  User        User[]
 }
 
 generator client {

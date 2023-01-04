@@ -1,10 +1,37 @@
+import { Record, Literal, String, Static, Number } from 'runtypes';
 import { FastifyInstance } from 'fastify';
-import { fetch } from 'undici';
-import { Telegraf } from 'telegraf';
+import { Telegraf, Context, NarrowedContext, Markup } from 'telegraf';
+import { MountMap } from 'telegraf/typings/telegram-types';
+import { Update } from 'telegraf/typings/core/types/typegram';
 import { telegramApiKey } from './config';
 import { prisma } from './prisma';
+import { getExchangeRate } from './services/exchangeRates';
 
-const TELEGRAM_BASE_URL = `https://api.telegram.org/bot${telegramApiKey}`;
+// ---
+
+const INVOICE_STATUS_INCOMPLETE = 'incomplete';
+
+const BALANCE_CURRENCY_SELECTION_TYPE = 'BR';
+const BALANCE_RECHARGE_AMOUNT_SELECTION = 'BRS';
+const BalanceRechargeCurrencySelection = Record({
+    type: Literal(BALANCE_CURRENCY_SELECTION_TYPE),
+    currency: String,
+});
+const BalanceRechargeAmountSelection = Record({
+    type: Literal(BALANCE_RECHARGE_AMOUNT_SELECTION),
+    refillId: Number,
+});
+
+const RECHARGE_AMOUNTS = [
+    { amount: 10, price: 10 },
+    { amount: 55, price: 50 },
+    { amount: 110, price: 100 }, 
+];
+const SUPPORTED_CURRENCIES = [
+    { ticker: 'USDT', description: 'USDT (TRC-20)' },
+    { ticker: 'TRX', description: 'TRX' },
+    { ticker: 'BTC', description: 'BTC' },
+];
 const WEBHOOK_PATH = '/secret-path';
 
 const bot = new Telegraf(telegramApiKey);
@@ -17,20 +44,76 @@ function getCurrentUser(telegramId: string) {
     });
 }
 
-// function callTelegramMethod(method: string, payload: object) {
-//     return fetch(`${TELEGRAM_BASE_URL}/${method}`, {
-//         method: 'POST',
-//         body: JSON.stringify(payload),
-//         headers: {
-//             'Content-Type': 'application/json',
-//         },
-//     }).then((value) => value.json());
-// }
+type CommandContext = NarrowedContext<Context<Update>, MountMap['text']>;
+type CallbackQueryContext = NarrowedContext<Context<Update>, MountMap['callback_query']>;
 
+async function balanceStatus(ctx: CommandContext) {
+    const telegramId = ctx.from.id.toString();
+    const user = await getCurrentUser(telegramId);
 
-// function setWebhook(url: string) {
-//     return callTelegramMethod('setWebhook', { url })
-// }
+    const replyMessage = [
+        `Ваш баланс 💰 ${user.balance} USD`,
+        'Чтобы пополнить баланс, выберите валюту пополнения'
+    ].join('\n');
+    
+    ctx.reply(
+        replyMessage,
+        Markup.inlineKeyboard(
+            SUPPORTED_CURRENCIES.map((currency) => (
+                Markup.button.callback(
+                    currency.ticker,
+                    JSON.stringify(
+                        BalanceRechargeCurrencySelection.check({
+                            type: BALANCE_CURRENCY_SELECTION_TYPE,
+                            currency: currency.ticker,
+                        }),
+                    ),
+                )
+            )),
+        ),
+    );
+}
+
+async function balanceAmountSelection(
+    ctx: CallbackQueryContext,
+    data: Static<typeof BalanceRechargeCurrencySelection>,
+) {
+    if (!ctx.from) {
+        throw new Error('Missing `from` field');
+    }
+
+    const user = await getCurrentUser(ctx.from.id.toString());
+    const refillRequest = await prisma.refillRequest.create({
+        data: {
+            userId: user.id,
+            currency: data.currency,
+            status: INVOICE_STATUS_INCOMPLETE,
+        },
+    });
+
+    const exchangeRate = await getExchangeRate(data.currency);
+
+    ctx.reply(
+        'Выберите желаемую сумму пополнения',
+        Markup.inlineKeyboard(
+            RECHARGE_AMOUNTS.map(({ amount, price }) => {
+                const priceInSelectedCurrency = Math.floor(price * exchangeRate * 1e6);
+    
+                return [
+                    Markup.button.callback(
+                        `${priceInSelectedCurrency / 1e6} ${data.currency} (${amount})`,
+                        JSON.stringify(
+                            BalanceRechargeAmountSelection.check({
+                                type: BALANCE_RECHARGE_AMOUNT_SELECTION,
+                                refillId: refillRequest.id,
+                            } as Static<typeof BalanceRechargeAmountSelection>),
+                        ),
+                    ),
+                ];
+            }),
+        ),
+    );
+}
 
 export async function init(host: string, app: FastifyInstance) {
     bot.telegram.setWebhook(`${host}${WEBHOOK_PATH}`);
@@ -40,37 +123,21 @@ export async function init(host: string, app: FastifyInstance) {
         bot.handleUpdate(req.body as any, res.raw)
     });
 
-    bot.command('subscription', async (ctx) => {
-        const telegramId = ctx.from.id.toString();
-        const user = await getCurrentUser(telegramId);
-        
-        const groups = await prisma.productGroup.findMany({
-            include: { products: true },
-        });
+    bot.command('balance', balanceStatus);
+    bot.on('callback_query', (ctx) => {
+        const data = JSON.parse(ctx.callbackQuery.data || '');
 
-        // речь про баланс
-        // 03:15:50
-
-        // TODO: add subscription flag
-        const subscriptionProducts = await prisma.product.findMany();
-        
-        // const products = groups.map((group) => [
-        //     {
-        //         text: `💰 ${product.description} ($${(product.price / 100).toFixed(2)})`,
-        //         callback_data: JSON.stringify({
-        //             userId: user.id,
-        //             productId: product.id,
-        //         }),
-        //     }
-        // ]);
-
-        // ctx.reply("Вы можете купить подписку", {
-        //     reply_markup: {
-        //         inline_keyboard: products,
-        //     },
-        // });
+        if (BalanceRechargeCurrencySelection.validate(data).success) {
+            balanceAmountSelection(
+                ctx,
+                BalanceRechargeCurrencySelection.check(data),
+            );
+        }
+        else {
+            console.error('callback_query error' , data);
+        }
     });
-//     app.post(WEBHOOK_PATH, (req, res) => {
+    //     app.post(WEBHOOK_PATH, (req, res) => {
 //         // @ts-ignore
 //         const { message } = req.body;
 
