@@ -1,13 +1,16 @@
 import { Record, Literal, String, Static, Number } from 'runtypes';
 import { FastifyInstance } from 'fastify';
-import { Telegraf, Context, NarrowedContext, Markup } from 'telegraf';
+import { Context, NarrowedContext, Markup } from 'telegraf';
 import { MountMap } from 'telegraf/typings/telegram-types';
 import { Update } from 'telegraf/typings/core/types/typegram';
-import { telegramApiKey } from './config';
 import { prisma } from './prisma';
 import { getExchangeRate } from './services/exchangeRates';
+import { bot, registerRenderer, RenderResult } from './services/telegram';
+import { UserMachineState } from './stateMachines/userStateMachines';
 
 // ---
+
+// 03:28:39
 
 const INVOICE_STATUS_INCOMPLETE = 'incomplete';
 
@@ -33,8 +36,6 @@ const SUPPORTED_CURRENCIES = [
     { ticker: 'BTC', description: 'BTC' },
 ];
 const WEBHOOK_PATH = '/secret-path';
-
-const bot = new Telegraf(telegramApiKey);
 
 function getCurrentUser(telegramId: string) {
     return prisma.user.upsert({
@@ -115,28 +116,72 @@ async function balanceAmountSelection(
     );
 }
 
+async function handleUserState(state: UserMachineState): Promise<RenderResult> {
+    if (state.matches('idle')) {
+        return {
+            message: 'IDLE',
+            extra: Markup.inlineKeyboard([
+                Markup.button.callback('BALANCE', JSON.stringify({ type: 'BALANCE' })),
+            ]),
+        };
+    }
+    else if (state.matches('balance')) {
+        return {
+            message: 'BALANCE',
+            extra: Markup.inlineKeyboard([
+                Markup.button.callback('BACK', JSON.stringify({ type: 'BACK' })),
+            ]),
+        };
+    }
+
+    return {
+        message: 'UNKNOWN',
+    };
+}
+
 export async function init(host: string, app: FastifyInstance) {
     bot.telegram.setWebhook(`${host}${WEBHOOK_PATH}`);
-
 
     app.post(WEBHOOK_PATH, (req, res) => {
         bot.handleUpdate(req.body as any, res.raw)
     });
 
-    bot.command('balance', balanceStatus);
-    bot.on('callback_query', (ctx) => {
-        const data = JSON.parse(ctx.callbackQuery.data || '');
+    registerRenderer(handleUserState);
 
-        if (BalanceRechargeCurrencySelection.validate(data).success) {
-            balanceAmountSelection(
-                ctx,
-                BalanceRechargeCurrencySelection.check(data),
-            );
-        }
-        else {
-            console.error('callback_query error' , data);
-        }
-    });
+    // bot.command('start', (ctx) => {
+    //     const data = JSON.stringify({ 1: 'hi', 2: 'hello', 3: 'good morning' });
+    //     const base64 = Buffer.from(data).toString('base64');
+
+    //     const message = `Привет[\u200c](https://fake.host/${base64})`;
+
+    //     updateUserScreen(
+    //         ctx.chat.id,
+    //         message,
+    //         {
+    //             parse_mode: 'MarkdownV2',
+    //             ...Markup.inlineKeyboard([Markup.button.callback('test', '123')]),
+    //         },
+    //     );
+    // })
+
+    // bot.command('balance', balanceStatus);
+    // bot.on('callback_query', (ctx) => {
+    //     if (!ctx.chat) {
+    //         return;
+    //     }
+    //     updateUserScreen(ctx.chat.id, 'TEST EDIT');
+    //     // const data = JSON.parse(ctx.callbackQuery.data || '');
+
+    //     // if (BalanceRechargeCurrencySelection.validate(data).success) {
+    //     //     balanceAmountSelection(
+    //     //         ctx,
+    //     //         BalanceRechargeCurrencySelection.check(data),
+    //     //     );
+    //     // }
+    //     // else {
+    //     //     console.error('callback_query error' , data);
+    //     // }
+    // });
     //     app.post(WEBHOOK_PATH, (req, res) => {
 //         // @ts-ignore
 //         const { message } = req.body;
