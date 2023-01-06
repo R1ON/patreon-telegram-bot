@@ -3,10 +3,11 @@ import { createMachine, interpret, StateMachine } from "@xstate/fsm";
 // ---
 
 type UserContext = {
+    counter: number;
 };
 
 export type UserEvent =
-    | { type: 'BALANCE'; id: string }
+    | { type: 'BALANCE' }
     | { type: 'BACK' };
 
 export type UserState =
@@ -21,6 +22,9 @@ export type UserState =
 
 const userMachine = createMachine<UserContext, UserEvent, UserState>({
     initial: 'idle',
+    context: {
+        counter: 0,
+    },
     states: {
         idle: {
             on: {
@@ -39,6 +43,10 @@ export type UserMachineState = StateMachine.State<UserContext, UserEvent, UserSt
 
 export function processAction(state: UserState, event: UserEvent | null) {
     const userService = interpret(userMachine);
+    userService.subscribe((state) => {
+        console.log('incremented');
+        state.context.counter++;
+    });
 
     userService.start(state);
     

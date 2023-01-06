@@ -1,54 +1,68 @@
-import { Telegraf } from 'telegraf';
-import { Update } from '@grammyjs/types';
-import { ExtraEditMessageText, ExtraReplyMessage } from 'telegraf/typings/telegram-types';
+import { request as fetch } from 'undici';
+import {
+    Update,
+    Message,
+    MessageEntity,
+    InlineKeyboardMarkup,
+    ParseMode,
+    InlineKeyboardButton,
+    Params,
+    InputFileProxy,
+    ApiResponse,
+} from '@grammyjs/types';
+import { RouteHandler } from 'fastify';
 import { telegramApiKey } from '../config';
 import { processAction, UserEvent, UserMachineState, UserState } from '../stateMachines/userStateMachines';
-import { User } from '@prisma/client';
+
+// ---
 
 type ChatId = number;
 
 const LAST_MESSAGE_IDS = new Map<ChatId, number>();
 const FAKE_STATE_HOST = 'https://fake.state.host';
 
-// 02:41:57
-
-
-// 53:05 { telegram: { webhookReply: false } }
-export const bot = new Telegraf(telegramApiKey);
+// ---
 
 export type RenderResult = {
     message: string;
-    extra?: ExtraReplyMessage;
+    extra?: { reply_markup?: Partial<InlineKeyboardMarkup> };
 }; 
 
 export function registerRenderer(
     render: (state: UserMachineState) => Promise<RenderResult>,
-) {
-    bot.use(async (ctx, next) => {
-        if (!isMessageUpdate(ctx.update)) {
-            return next();
-        }
+): RouteHandler {
+    return async (req, res) => {
+        res.send({ success: true });
 
-        const chatId = extractChatIdFromMessage(ctx.update);
-
-        if (ctx.update.message) {
-            LAST_MESSAGE_IDS.delete(chatId);
-        }
-    
-        const message = // because of node js v12
-            ctx.update.callback_query
-            && ctx.update.callback_query.message
-            && ctx.update.callback_query.message.text;
-    
-        const userState = restoreUserState(message);
+        // TODO add runtypes
+        const ctx: Update = req.body as any;
         
-        const action = extractActionFromMessage(ctx.update);
-        const newState = processAction(userState, action);
-        const reaction = await render(newState);
-        const augmentedReaction = augmentReactionWithState(reaction, newState);
+        if (!isMessageUpdate(ctx)) {
+            return;
+        }
 
-        return updateUserScreen(chatId, augmentedReaction.message, augmentedReaction.extra as any);
-    });
+        try {
+            const chatId = extractChatIdFromMessage(ctx);
+
+            if (ctx.message) {
+                LAST_MESSAGE_IDS.delete(chatId);
+            }
+        
+            const message = ctx.callback_query && ctx.callback_query.message;
+        
+            const userState = restoreUserState(message);
+            
+            const action = extractActionFromMessage(ctx);
+            const newState = processAction(userState, action);
+            const reaction = await render(newState);
+            const augmentedReaction = augmentReactionWithState(reaction, newState);
+    
+            return updateUserScreen(chatId, augmentedReaction.message, augmentedReaction.extra as any);
+        }
+        catch(error) {
+            console.error('registerRenderer error: ', error);
+        }
+    };
 }
 
 export function extractChatIdFromMessage(update: Update): ChatId {
@@ -63,8 +77,37 @@ export function extractChatIdFromMessage(update: Update): ChatId {
     throw new Error('Failure to extact chat id');
 }
 
-export function restoreUserState(text: string | undefined): UserState {
-    return { value: 'idle', context: {} };
+const DEFAULT_STATE = { value: 'idle', context: { counter: 0 } } as const;
+
+export function restoreUserState(message: Message | undefined): UserState {
+    if (!message) {
+        return DEFAULT_STATE;
+    }
+    
+    const stateUrl = (message.entities || []).find((message) => (
+        message.type === 'text_link' && message.url.startsWith(FAKE_STATE_HOST)
+    ));
+
+    if (!isTextLinkMessageEntity(stateUrl)) {
+        return DEFAULT_STATE;
+    }
+
+    const state = JSON.parse(
+        Buffer.from(
+            stateUrl.url.substring(`${FAKE_STATE_HOST}/`.length),
+            'base64',
+        ).toString()
+    );
+
+    console.log('restoredState', state);
+
+    return state;
+}
+
+function isTextLinkMessageEntity(
+    message?: MessageEntity,
+): message is MessageEntity.TextLinkMessageEntity {
+    return message ? message.type === 'text_link' : false;
 }
 
 export function extractActionFromMessage(update: Update): UserEvent | null {
@@ -83,7 +126,7 @@ let messageId = 0;
 function augmentReactionWithState(
     { message, extra = {} }: RenderResult,
     state: UserMachineState,
-): RenderResult {
+): RenderResult & { extra: { parse_mode: ParseMode } } {
     const serialized_state = Buffer.from(
         JSON.stringify({ ...state, _id: messageId })
     ).toString('base64');
@@ -104,20 +147,66 @@ function augmentReactionWithState(
 export async function updateUserScreen(
     chatId: ChatId,
     message: string,
-    extra?: ExtraEditMessageText,
+    extra?: { reply_markup: InlineKeyboardMarkup  },
 ) {
     const lastMessageId = LAST_MESSAGE_IDS.get(chatId);
 
     if (lastMessageId) {
-        return bot.telegram.editMessageText(chatId, lastMessageId, undefined, message, extra);
+        return callTelegramMethod('editMessageText', {
+            chat_id: chatId,
+            message_id: lastMessageId,
+            text: message,
+            ...extra,
+        });
     }
     
-    const result = await bot.telegram.sendMessage(chatId, message, extra);
-    LAST_MESSAGE_IDS.set(chatId, result.message_id);
+    const apiResponse = await callTelegramMethod('sendMessage', {
+        chat_id: chatId,
+        text: message,
+        ...extra,
+    });
 
-    return result;
+    if (apiResponse.ok) {
+        LAST_MESSAGE_IDS.set(chatId, apiResponse.result.message_id);
+    }
+
+    return apiResponse;
 }
 
 function isMessageUpdate(update: unknown): update is Update {
     return Boolean(update);
+}
+
+// ---
+
+export function actionButton(
+    text: string,
+    action: UserEvent,
+): InlineKeyboardButton.CallbackButton {
+    return {
+        text,
+        callback_data: JSON.stringify(action),
+    };
+}
+
+// ---
+
+const TELEGRAM_BASE_URL = `https://api.telegram.org/bot${telegramApiKey}`;
+type SetWebhookParams = Params<'setWebhook', unknown>[0];
+
+function callTelegramMethod<T extends keyof InputFileProxy<F>['Telegram'], F>(
+    method: T,
+    payload: Params<T, F>[0],
+): Promise<ApiResponse<ReturnType<InputFileProxy<F>['Telegram'][T]>>> {
+    return fetch(`${TELEGRAM_BASE_URL}/${method}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    }).then((value) => value.body.json());
+}
+
+export function setWebhook(url: string) {
+    return callTelegramMethod('setWebhook', { url })
 }
