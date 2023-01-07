@@ -14,7 +14,6 @@ function generateAccount() {
 
     const adress = TronWeb.utils.crypto.getAddressFromPriKey(privateKey);
 
-    // TODO: 1:13:26
     return {
         privateKey: privateKey.toString('hex').padStart(64, '0'),
         publicKey: publicKey.toString('hex').padStart(64, '0'),
@@ -27,9 +26,7 @@ function generateAccount() {
 
 export const TRON_CURRENCY = 'trx';
 
-type TronWallet = Wallet & { currency: typeof TRON_CURRENCY };
-
-export async function getOrCreateWallet(user: User): Promise<TronWallet> {
+export async function getOrCreateWallet(user: User): Promise<string> {
     const wallet = await prisma.wallet.findFirst({
         where: {
             userId: user.id,
@@ -38,12 +35,14 @@ export async function getOrCreateWallet(user: User): Promise<TronWallet> {
     });
 
     if (wallet) {
-        return wallet as TronWallet;
+        const adress = TronWeb.utils.crypto.getAddressFromPriKey(wallet.privateKey);
+
+        return TronWeb.utils.crypto.getBase58CheckAddress(adress);
     }
 
     const { adress, privateKey } = generateAccount();
 
-    return await prisma.wallet.create({
+    await prisma.wallet.create({
         data: {
             currency: TRON_CURRENCY,
             user: {
@@ -54,13 +53,7 @@ export async function getOrCreateWallet(user: User): Promise<TronWallet> {
             adress: adress.hex,
             privateKey,
         },
-    }) as TronWallet;
+    });
+
+    return adress.base58;
 }
-
-// async function run() {
-//     const user = await prisma.user.findFirst();
-//     const wallet = await getOrCreateWallet(user as any);
-//     console.log(wallet);
-// }
-
-// run();

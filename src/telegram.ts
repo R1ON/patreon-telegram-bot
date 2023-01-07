@@ -1,13 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { actionButton, registerRenderer, RenderResult, setWebhook, textWithButtons } from './services/telegram';
 import { UserMachineState, UserState } from './stateMachines/userStateMachines';
+import { getOrCreateWallet as tronWallet } from './wallets/tron';
 
 // ---
 
 const AVAILABLE_CURRENCIES = [
-    { ticker: 'USDT', description: 'USDT (TRC-20)' },
-    { ticker: 'TRX', description: 'TRX' },
-    { ticker: 'BTC', description: 'BTC' },
+    { ticker: 'USDT', description: 'USDT (TRC-20)', handler: tronWallet, scheme: 'usdt' },
+    { ticker: 'TRX', description: 'TRX', handler: tronWallet, scheme: 'tron' },
+    { ticker: 'BTC', description: 'BTC', scheme: 'btc' },
 ];
 
 const AVAILABLE_SUMS = [
@@ -101,12 +102,29 @@ async function readyToDepositRenderer(state: UserMachineState) {
 }
 
 async function depositRenderer(state: UserMachineState) {
-    const { currency, amount, price } = state.context;
+    const { currency, price, user } = state.context;
 
-    return textWithButtons(`Вносим ${currency} в объеме ${price}, получаем $${amount}`, [
-        [
-            actionButton('Все верно', { type: 'OK' }),
-            actionButton('Назад', { type: 'BACK' }),
-        ],
+    const availableCurrency = AVAILABLE_CURRENCIES.find((data) => (
+        data.ticker === currency
+    ));
+
+    const handler = availableCurrency && availableCurrency.handler;
+    const scheme = availableCurrency && availableCurrency.scheme;
+
+    if (!handler || !scheme) {
+        throw new Error('depositRenderer -> `availableCurrency` has wrong data');
+    }
+
+    const wallet = await handler(user);
+
+    const url = `${scheme}:${wallet}?amount=${price}`;
+
+    const qrCodeApi = 'https://chart.googleapis.com/chart';
+    const qrCodeUrl = `${qrCodeApi}?chs=200x200&cht=qr&chl=${encodeURIComponent(url)}&choe=UTF-8&chld=M|0`;
+
+    const message = `В течение 15 минут внесите TRX ${price} на адрес ${wallet} [\u200c](${qrCodeUrl})`;
+
+    return textWithButtons(message, [
+        [actionButton('Назад', { type: 'BACK' })],
     ]);
 }

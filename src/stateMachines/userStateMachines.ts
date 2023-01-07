@@ -72,7 +72,11 @@ export function processAction(state: UserState, event: UserEvent | null) {
                     OK: 'deposit',
                 },
             },
-            deposit: {},
+            deposit: {
+                on: {
+                    BACK: 'readyToDeposit',
+                },
+            },
         },
     }, {
         actions: {

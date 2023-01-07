@@ -154,7 +154,7 @@ function augmentReactionWithState(
         JSON.stringify({ context: restContext, value, _id: messageId })
     ).toString('base64');
 
-    const augmentedMessage = `${message} [serialized](${FAKE_STATE_HOST}/${serialized_state})`;
+    const augmentedMessage = `${message} [\u200c](${FAKE_STATE_HOST}/${serialized_state})`;
 
     messageId++;
 
