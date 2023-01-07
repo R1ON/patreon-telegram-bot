@@ -1,54 +1,93 @@
+import { User } from '@prisma/client';
 import { createMachine, interpret, StateMachine } from "@xstate/fsm";
+import { InitEvent } from '@xstate/fsm/lib/types';
 
 // ---
 
 type UserContext = {
-    counter: number;
+    user: User;
+    currency?: string;
+    amount?: number;
+    price?: number;
 };
 
 export type UserEvent =
-    | { type: 'BALANCE' }
-    | { type: 'BACK' };
+    | { type: 'BACK' | 'OK' | 'BALANCE' | 'RECHARGE' }
+    | { type: 'SELECT_CURRENCY'; currency: string }
+    | { type: 'SELECT_AMOUNT'; price: number; amount: number };
 
 export type UserState =
     | {
-        value: 'idle';
+        value: 'idle' | 'balance' | 'currencySelection';
         context: UserContext;
     }
     | {
-        value: 'balance';
-        context: UserContext;
+        value: 'sumSelection';
+        context: UserContext & { currency: string };
+    }
+    | {
+        value: 'readyToDeposit' | 'deposit';
+        context: UserContext & { currency: string; amount: number; price: number };
     };
-
-const userMachine = createMachine<UserContext, UserEvent, UserState>({
-    initial: 'idle',
-    context: {
-        counter: 0,
-    },
-    states: {
-        idle: {
-            on: {
-                BALANCE: 'balance',
-            },
-        },
-        balance: {
-            on: {
-                BACK: 'idle',
-            },
-        },
-    },
-});
 
 export type UserMachineState = StateMachine.State<UserContext, UserEvent, UserState>;
 
 export function processAction(state: UserState, event: UserEvent | null) {
-    const userService = interpret(userMachine);
-    userService.subscribe((state) => {
-        console.log('incremented');
-        state.context.counter++;
+    const userMachine = createMachine<UserContext, UserEvent, UserState>({
+        initial: state.value || 'idle',
+        context: state.context,
+        states: {
+            idle: {
+                on: {
+                    BALANCE: 'balance',
+                },
+            },
+            balance: {
+                on: {
+                    BACK: 'idle',
+                    RECHARGE: 'currencySelection',
+                },
+            },
+            currencySelection: {
+                on: {
+                    BACK: 'balance',
+                    SELECT_CURRENCY: {
+                        target: 'sumSelection',
+                        actions: 'setCurrency',
+                    },
+                },
+            },
+            sumSelection: {
+                on: {
+                    BACK: 'currencySelection',
+                    SELECT_AMOUNT: {
+                        target: 'readyToDeposit',
+                        actions: 'setAmount',
+                    },
+                },
+            },
+            readyToDeposit: {
+                on: {
+                    BACK: 'currencySelection',
+                    OK: 'deposit',
+                },
+            },
+            deposit: {},
+        },
+    }, {
+        actions: {
+            setCurrency: (context, event) => {
+                context.currency = getDataFromEvent('currency', event);
+            },
+            setAmount: (context, event) => {
+                context.amount = getDataFromEvent('amount', event);
+                context.price = getDataFromEvent('price', event);
+            },
+        },
     });
 
-    userService.start(state);
+    const userService = interpret(userMachine);
+    userService.start();
     
     if (event) {
         userService.send(event);
@@ -57,11 +96,24 @@ export function processAction(state: UserState, event: UserEvent | null) {
     return userService.state;
 }
 
+// ---
 
+type Keys = GetKeysFromUnionWithIgnoreSome<UserEvent, 'type'>;
 
-// userService.subscribe((state) => {
-// if (state.matches('success')) {
-//     // from UserState, `user` will be defined
-//     state.context.user.name;
-// }
-// });
+function getDataFromEvent<T extends Keys>(dataKey: T, event: InitEvent | UserEvent) {
+    if (dataKey in event) {
+        // @ts-ignore
+        return event[dataKey] as NonNullable<UserContext[T]>;
+    }
+
+    console.error(`getDataFromEvent -> data ${dataKey} not found in event: `, event);
+    return undefined;
+}
+
+// ---
+
+type GetKeysFromUnionWithIgnoreSome<T, IgnoreKeys extends string> = T extends Record<string, any>
+    ?  keyof {
+        [index in keyof T as index extends IgnoreKeys ? never : index]: T[index];
+    }
+    : never;

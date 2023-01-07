@@ -11,6 +11,7 @@ import {
     ApiResponse,
 } from '@grammyjs/types';
 import { RouteHandler } from 'fastify';
+import { getOrCreateUserByTelegramId } from './user';
 import { telegramApiKey } from '../config';
 import { processAction, UserEvent, UserMachineState, UserState } from '../stateMachines/userStateMachines';
 
@@ -42,7 +43,8 @@ export function registerRenderer(
         }
 
         try {
-            const chatId = extractChatIdFromMessage(ctx);
+            const chatId = extractChatIdFromUpdate(ctx);
+            const telegramId = extractUserIdFromUpdate(ctx);
 
             if (ctx.message) {
                 LAST_MESSAGE_IDS.delete(chatId);
@@ -50,7 +52,7 @@ export function registerRenderer(
         
             const message = ctx.callback_query && ctx.callback_query.message;
         
-            const userState = restoreUserState(message);
+            const userState = await restoreUserState(telegramId, message);
             
             const action = extractActionFromMessage(ctx);
             const newState = processAction(userState, action);
@@ -65,7 +67,7 @@ export function registerRenderer(
     };
 }
 
-export function extractChatIdFromMessage(update: Update): ChatId {
+export function extractChatIdFromUpdate(update: Update): ChatId {
     if (update.message) {
         return update.message.chat.id;
     }
@@ -74,12 +76,30 @@ export function extractChatIdFromMessage(update: Update): ChatId {
         return update.callback_query.message.chat.id;
     }
 
-    throw new Error('Failure to extact chat id');
+    throw new Error('extractChatIdFromMessage -> failure to extact chat id');
 }
 
-const DEFAULT_STATE = { value: 'idle', context: { counter: 0 } } as const;
 
-export function restoreUserState(message: Message | undefined): UserState {
+export function extractUserIdFromUpdate(update: Update): number {
+    if (update.message && update.message.from) {
+        return update.message.from.id;
+    }
+
+    if (update.callback_query && update.callback_query.message) {
+        return update.callback_query.message.chat.id;
+    }
+
+    throw new Error('extractTelegramIdFromMessage -> failure to extact telegram id');
+}
+
+export async function restoreUserState(
+    telegramId: number,
+    message?: Message,
+): Promise<UserState> {
+    const user = await getOrCreateUserByTelegramId(telegramId);
+
+    const DEFAULT_STATE = { value: 'idle', context: { user } } as const;
+
     if (!message) {
         return DEFAULT_STATE;
     }
@@ -92,16 +112,14 @@ export function restoreUserState(message: Message | undefined): UserState {
         return DEFAULT_STATE;
     }
 
-    const state = JSON.parse(
+    const { value, context } = JSON.parse(
         Buffer.from(
             stateUrl.url.substring(`${FAKE_STATE_HOST}/`.length),
             'base64',
         ).toString()
     );
 
-    console.log('restoredState', state);
-
-    return state;
+    return { value, context: { ...context, user } };
 }
 
 function isTextLinkMessageEntity(
@@ -127,8 +145,13 @@ function augmentReactionWithState(
     { message, extra = {} }: RenderResult,
     state: UserMachineState,
 ): RenderResult & { extra: { parse_mode: ParseMode } } {
+    const {
+        value,
+        context: { user, ...restContext },
+    } = state;
+
     const serialized_state = Buffer.from(
-        JSON.stringify({ ...state, _id: messageId })
+        JSON.stringify({ context: restContext, value, _id: messageId })
     ).toString('base64');
 
     const augmentedMessage = `${message} [serialized](${FAKE_STATE_HOST}/${serialized_state})`;
@@ -186,6 +209,17 @@ export function actionButton(
     return {
         text,
         callback_data: JSON.stringify(action),
+    };
+}
+
+export function textWithButtons(message: string, buttons: InlineKeyboardButton[][]) {
+    return {
+        message,
+        extra: {
+            reply_markup: {
+                inline_keyboard: buttons,
+            },
+        },
     };
 }
 

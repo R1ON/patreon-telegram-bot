@@ -1,12 +1,12 @@
 model User {
-  id                    Int       @id @default(autoincrement())
-  email                 String?   @unique
-  telegramId            String    @unique
-  balance               BigInt    @default(0)
+  id                    Int             @id @default(autoincrement())
+  email                 String?         @unique
+  telegramId            Int             @unique
+  balance               BigInt          @default(0)
   subscriptionProductId Int?
   patreonAccessToken    String?
   patreonRefreshToken   String?
-  currentSubscribtion   Product?  @relation(fields: [subscriptionProductId], references: [id])
+  currentSubscribtion   Product?        @relation(fields: [subscriptionProductId], references: [id])
   nextBillingDate       DateTime?
   wallets               Wallet[]
   refills               RefillRequest[]
