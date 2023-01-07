@@ -101,7 +101,6 @@ async function readyToDepositRenderer(state: UserMachineState) {
 }
 
 async function depositRenderer(state: UserMachineState) {
-    // ТУТ
     const { currency, amount, price } = state.context;
 
     return textWithButtons(`Вносим ${currency} в объеме ${price}, получаем $${amount}`, [

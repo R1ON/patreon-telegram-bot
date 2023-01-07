@@ -113,7 +113,7 @@ function getDataFromEvent<T extends Keys>(dataKey: T, event: InitEvent | UserEve
 // ---
 
 type GetKeysFromUnionWithIgnoreSome<T, IgnoreKeys extends string> = T extends Record<string, any>
-    ?  keyof {
-        [index in keyof T as index extends IgnoreKeys ? never : index]: T[index];
+    ? keyof {
+        [i in keyof T as i extends IgnoreKeys ? never : i]: T[i];
     }
     : never;
