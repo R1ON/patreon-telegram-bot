@@ -18,7 +18,15 @@ export type UserEvent =
 
 export type UserState =
     | {
-        value: 'idle' | 'balance' | 'currencySelection';
+        value: 'idle';
+        context: UserContext;
+    }
+    | {
+        value: 'balance';
+        context: UserContext;
+    }
+    | {
+        value: 'currencySelection';
         context: UserContext;
     }
     | {
@@ -26,7 +34,11 @@ export type UserState =
         context: UserContext & { currency: string };
     }
     | {
-        value: 'readyToDeposit' | 'deposit';
+        value: 'readyToDeposit';
+        context: UserContext & { currency: string; amount: number; price: number };
+    }
+    | {
+        value: 'deposit';
         context: UserContext & { currency: string; amount: number; price: number };
     };
 
@@ -97,7 +109,7 @@ export function processAction(state: UserState, event: UserEvent | null) {
         userService.send(event);
     }
 
-    return userService.state;
+    return userService.state as UserState;
 }
 
 // ---

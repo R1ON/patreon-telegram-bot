@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
+import { getExchangeRate } from './services/exchangeRates';
 import { actionButton, registerRenderer, RenderResult, setWebhook, textWithButtons } from './services/telegram';
-import { UserMachineState, UserState } from './stateMachines/userStateMachines';
+import { UserState } from './stateMachines/userStateMachines';
 import { getOrCreateWallet as tronWallet } from './wallets/tron';
 
 // ---
@@ -19,6 +20,8 @@ const AVAILABLE_SUMS = [
 
 // ---
 
+// 1:21:25
+
 export async function init(host: string, app: FastifyInstance) {
     const WEBHOOK_PATH = '/secret-path';
 
@@ -29,34 +32,42 @@ export async function init(host: string, app: FastifyInstance) {
 
 // ---
 
-type StateRenderer = (state: UserMachineState) => Promise<RenderResult>;
+declare function assertExhaustiveness(arg: never): never;
+
+type SpecificState<T extends UserState['value']> = UserState & { value: T };
+type StateRenderer<T extends UserState = UserState> = (state: T) => Promise<RenderResult>;
 
 const handleUserState: StateRenderer = (state) => {
-    const render: Record<UserState['value'], StateRenderer> = {
-        idle: idleRendered,
-        balance: balanceRenderer,
-        currencySelection: currencySelectionRenderer,
-        sumSelection: sumSelectionRenderer,
-        readyToDeposit: readyToDepositRenderer,
-        deposit: depositRenderer,
-    };
-    
-    const handler = render[state.value] || unknownRenderer;
-
-    return handler(state);
+    switch(state.value) {
+        case 'idle':
+            return idleRendered(state);
+        case 'balance':
+            return balanceRenderer(state);
+        case 'currencySelection':
+            return currencySelectionRenderer(state);
+        case 'sumSelection':
+            return sumSelectionRenderer(state);
+        case 'readyToDeposit':
+            return readyToDepositRenderer(state);
+        case 'deposit':
+            return depositRenderer(state);
+        default:
+            assertExhaustiveness(state);
+            // return unknownRenderer();
+    }
 };
 
 function unknownRenderer() {
     return Promise.resolve({ message: 'Что-то пошло не так 😒' });
 }
 
-async function idleRendered(state: UserMachineState) {
+async function idleRendered(state: SpecificState<'idle'>) {
     return textWithButtons(`IDLE ${state.context.user.id}`, [
         [actionButton('Пополнить баланс', { type: 'BALANCE' })],
     ]);
 }
 
-async function balanceRenderer(state: UserMachineState) {
+async function balanceRenderer(state: SpecificState<'balance'>) {
     return textWithButtons(`BALANCE ${state.context.user.id}`, [
         [
             actionButton('Пополнить', { type: 'RECHARGE' }),
@@ -65,7 +76,7 @@ async function balanceRenderer(state: UserMachineState) {
     ]);
 }
 
-async function currencySelectionRenderer() {
+async function currencySelectionRenderer(_state: SpecificState<'currencySelection'>) {
     return textWithButtons('Выберите валюту пополнения', [
         AVAILABLE_CURRENCIES.map((currency) => (
             actionButton(currency.description, {
@@ -77,20 +88,26 @@ async function currencySelectionRenderer() {
     ]);
 }
 
-async function sumSelectionRenderer(state: UserMachineState) {
+async function sumSelectionRenderer(state: SpecificState<'sumSelection'>) {
+    const exchangeRate = await getExchangeRate(state.context.currency);
+
     return textWithButtons(`Выберите сумму пополнения в ${state.context.currency}`, [
-        AVAILABLE_SUMS.map((sum) => (
-            actionButton(`${sum.amount} (${sum.extraDescription})`, {
-                type: 'SELECT_AMOUNT',
-                price: sum.price,
-                amount: sum.amount,
-            })
-        )),
+        AVAILABLE_SUMS.map((sum) => {
+            const amount = sum.price * exchangeRate;
+
+            return (
+                actionButton(`${amount.toPrecision(2)} (${sum.extraDescription})`, {
+                    type: 'SELECT_AMOUNT',
+                    price: sum.price,
+                    amount,
+                })
+            );
+        }),
         [actionButton('Назад', { type: 'BACK' })],
     ]);
 }
 
-async function readyToDepositRenderer(state: UserMachineState) {
+async function readyToDepositRenderer(state: SpecificState<'readyToDeposit'>) {
     const { currency, amount, price } = state.context;
 
     return textWithButtons(`Вносим ${currency} в объеме ${price}, получаем $${amount}`, [
@@ -101,7 +118,7 @@ async function readyToDepositRenderer(state: UserMachineState) {
     ]);
 }
 
-async function depositRenderer(state: UserMachineState) {
+async function depositRenderer(state: SpecificState<'deposit'>) {
     const { currency, price, user } = state.context;
 
     const availableCurrency = AVAILABLE_CURRENCIES.find((data) => (

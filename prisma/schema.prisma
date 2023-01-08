@@ -16,7 +16,7 @@ model Wallet {
   id         Int    @id @default(autoincrement())
   userId     Int
   currency   String
-  adress     String
+  address    String
   privateKey String
   user       User   @relation(fields: [userId], references: [id])
 

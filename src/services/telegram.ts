@@ -13,7 +13,7 @@ import {
 import { RouteHandler } from 'fastify';
 import { getOrCreateUserByTelegramId } from './user';
 import { telegramApiKey } from '../config';
-import { processAction, UserEvent, UserMachineState, UserState } from '../stateMachines/userStateMachines';
+import { processAction, UserEvent, UserState } from '../stateMachines/userStateMachines';
 
 // ---
 
@@ -30,7 +30,7 @@ export type RenderResult = {
 }; 
 
 export function registerRenderer(
-    render: (state: UserMachineState) => Promise<RenderResult>,
+    render: (state: UserState) => Promise<RenderResult>,
 ): RouteHandler {
     return async (req, res) => {
         res.send({ success: true });
@@ -143,7 +143,7 @@ export function extractActionFromMessage(update: Update): UserEvent | null {
 let messageId = 0;
 function augmentReactionWithState(
     { message, extra = {} }: RenderResult,
-    state: UserMachineState,
+    state: UserState,
 ): RenderResult & { extra: { parse_mode: ParseMode } } {
     const {
         value,
