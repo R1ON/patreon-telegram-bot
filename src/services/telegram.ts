@@ -55,7 +55,7 @@ export function registerRenderer(
             const userState = await restoreUserState(telegramId, message);
             
             const action = extractActionFromMessage(ctx);
-            const newState = processAction(userState, action);
+            const newState = await processAction(userState, action);
             const reaction = await render(newState);
             const augmentedReaction = augmentReactionWithState(reaction, newState);
     

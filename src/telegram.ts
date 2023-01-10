@@ -20,8 +20,6 @@ const AVAILABLE_SUMS = [
 
 // ---
 
-// 1:21:25
-
 export async function init(host: string, app: FastifyInstance) {
     const WEBHOOK_PATH = '/secret-path';
 
@@ -38,12 +36,13 @@ type SpecificState<T extends UserState['value']> = UserState & { value: T };
 type StateRenderer<T extends UserState = UserState> = (state: T) => Promise<RenderResult>;
 
 const handleUserState: StateRenderer = (state) => {
-    console.log(state.value);
     switch(state.value) {
         case 'idle':
             return idleRendered(state);
         case 'balance':
             return balanceRenderer(state);
+        case 'checkIfRefillRequestExist':
+            return Promise.resolve({ message: 'TESTEST' });
         case 'currencySelection':
             return currencySelectionRenderer(state);
         case 'sumSelection':
@@ -55,8 +54,8 @@ const handleUserState: StateRenderer = (state) => {
         case 'deposit':
             return depositRenderer(state);
         default:
-            assertExhaustiveness(state);
-            // return unknownRenderer();
+            // assertExhaustiveness(state);
+            return unknownRenderer();
     }
 };
 

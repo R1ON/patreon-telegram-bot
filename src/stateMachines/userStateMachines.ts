@@ -36,6 +36,10 @@ export type UserState =
         context: UserContext;
     }
     | {
+        value: 'checkIfRefillRequestExist';
+        context: UserContext;
+    }
+    | {
         value: 'currencySelection';
         context: UserContext;
     }
@@ -67,7 +71,14 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
         balance: {
             on: {
                 BACK: 'idle',
-                RECHARGE: 'currencySelection',
+                RECHARGE: 'checkIfRefillRequestExist',
+            },
+        },
+        checkIfRefillRequestExist: {
+            invoke: {
+                src: 'checkIfRefillRequestExist',
+                onDone: 'currencySelection',
+                onError: 'idle',
             },
         },
         currencySelection: {
@@ -110,6 +121,11 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
         },
     },
 }, {
+    services: {
+        checkIfRefillRequestExist: async (context) => {
+            return Promise.resolve(true);
+        },
+    },
     actions: {
         setCurrency: (context, event) => {
             context.currency = getDataFromEvent('currency', event);
@@ -132,15 +148,21 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
     },
 });
 
-export function processAction(state: UserState, event: UserEvent | null) {
-    const userService = interpret(userMachine.withContext(state.context));
-    userService.start(state.value || 'idle');
-    
-    if (event) {
-        userService.send(event);
-    }
+export function processAction(state: UserState, event: UserEvent | null): Promise<UserState> {
+    return new Promise((resolve, reject) => {
+        const userService = interpret(userMachine.withContext(state.context));
+        userService.start(state.value || 'idle');
+        
+        if (event) {
+            userService.send(event);
+        }
 
-    return userService.state as UserState;
+        userService.subscribe((newState) => {
+            if (Object.keys(newState.children).length === 0) {
+                resolve(newState as UserState);
+            }
+        });
+    });
 }
 
 // ---
