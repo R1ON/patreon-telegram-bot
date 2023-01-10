@@ -1,6 +1,9 @@
 import { User } from '@prisma/client';
-import { createMachine, interpret, StateMachine } from "@xstate/fsm";
-import { InitEvent } from '@xstate/fsm/lib/types';
+import { createMachine, interpret } from "xstate";
+
+// ---
+
+const ALLOWED_AMOUNT_SELECTION_TIMEOUT = 1000 * 60 * 0.5;
 
 // ---
 
@@ -9,12 +12,19 @@ type UserContext = {
     currency?: string;
     amount?: number;
     price?: number;
+    currencySelectionTime?: number;
 };
 
 export type UserEvent =
     | { type: 'BACK' | 'OK' | 'BALANCE' | 'RECHARGE' }
     | { type: 'SELECT_CURRENCY'; currency: string }
     | { type: 'SELECT_AMOUNT'; price: number; amount: number };
+
+type ReadyToDepositContext = {
+    currency: string;
+    amount: number;
+    price: number;
+};
 
 export type UserState =
     | {
@@ -31,79 +41,100 @@ export type UserState =
     }
     | {
         value: 'sumSelection';
-        context: UserContext & { currency: string };
+        context: UserContext & { currency: string; currencySelectionTime: number };
     }
     | {
         value: 'readyToDeposit';
-        context: UserContext & { currency: string; amount: number; price: number };
+        context: UserContext & ReadyToDepositContext;
     }
     | {
         value: 'deposit';
-        context: UserContext & { currency: string; amount: number; price: number };
+        context: UserContext & ReadyToDepositContext;
+    }
+    | {
+        value: 'sumSelectionTimeout';
+        context: UserContext & ReadyToDepositContext;
     };
 
-export type UserMachineState = StateMachine.State<UserContext, UserEvent, UserState>;
+const userMachine = createMachine<UserContext, UserEvent, UserState>({
+    predictableActionArguments: true,
+    states: {
+        idle: {
+            on: {
+                BALANCE: 'balance',
+            },
+        },
+        balance: {
+            on: {
+                BACK: 'idle',
+                RECHARGE: 'currencySelection',
+            },
+        },
+        currencySelection: {
+            on: {
+                BACK: 'balance',
+                SELECT_CURRENCY: {
+                    target: 'sumSelection',
+                    actions: 'setCurrency',
+                },
+            },
+        },
+        sumSelection: {
+            entry: 'saveCurrentTime',
+            on: {
+                BACK: 'currencySelection',
+                SELECT_AMOUNT: [{
+                    cond: 'amountSelectionExpired',
+                    target: 'sumSelectionTimeout',
+                }, {
+                    target: 'readyToDeposit',
+                    actions: 'setAmount',
+                }],
+            },
+        },
+        readyToDeposit: {
+            on: {
+                BACK: 'sumSelection',
+                OK: 'deposit',
+            },
+        },
+        deposit: {
+            on: {
+                BACK: 'readyToDeposit',
+            },
+        },
+        sumSelectionTimeout: {
+            on: {
+                BACK: 'sumSelection',
+            },
+        },
+    },
+}, {
+    actions: {
+        setCurrency: (context, event) => {
+            context.currency = getDataFromEvent('currency', event);
+        },
+        setAmount: (context, event) => {
+            context.amount = getDataFromEvent('amount', event);
+            context.price = getDataFromEvent('price', event);
+        },
+        saveCurrentTime: (context, event) => {
+            const time = Date.now();
+            context.currencySelectionTime = time;
+        },
+    },
+    guards: {
+        amountSelectionExpired: (context) => {
+            const now = Date.now();
+                    
+            return now - context.currencySelectionTime! > ALLOWED_AMOUNT_SELECTION_TIMEOUT;
+        },
+    },
+});
 
 export function processAction(state: UserState, event: UserEvent | null) {
-    const userMachine = createMachine<UserContext, UserEvent, UserState>({
-        initial: state.value || 'idle',
-        context: state.context,
-        states: {
-            idle: {
-                on: {
-                    BALANCE: 'balance',
-                },
-            },
-            balance: {
-                on: {
-                    BACK: 'idle',
-                    RECHARGE: 'currencySelection',
-                },
-            },
-            currencySelection: {
-                on: {
-                    BACK: 'balance',
-                    SELECT_CURRENCY: {
-                        target: 'sumSelection',
-                        actions: 'setCurrency',
-                    },
-                },
-            },
-            sumSelection: {
-                on: {
-                    BACK: 'currencySelection',
-                    SELECT_AMOUNT: {
-                        target: 'readyToDeposit',
-                        actions: 'setAmount',
-                    },
-                },
-            },
-            readyToDeposit: {
-                on: {
-                    BACK: 'currencySelection',
-                    OK: 'deposit',
-                },
-            },
-            deposit: {
-                on: {
-                    BACK: 'readyToDeposit',
-                },
-            },
-        },
-    }, {
-        actions: {
-            setCurrency: (context, event) => {
-                context.currency = getDataFromEvent('currency', event);
-            },
-            setAmount: (context, event) => {
-                context.amount = getDataFromEvent('amount', event);
-                context.price = getDataFromEvent('price', event);
-            },
-        },
-    });
-
-    const userService = interpret(userMachine);
-    userService.start();
+    const userService = interpret(userMachine.withContext(state.context));
+    userService.start(state.value || 'idle');
     
     if (event) {
         userService.send(event);
@@ -116,7 +147,7 @@ export function processAction(state: UserState, event: UserEvent | null) {
 
 type Keys = GetKeysFromUnionWithIgnoreSome<UserEvent, 'type'>;
 
-function getDataFromEvent<T extends Keys>(dataKey: T, event: InitEvent | UserEvent) {
+function getDataFromEvent<T extends Keys>(dataKey: T, event: UserEvent) {
     if (dataKey in event) {
         // @ts-ignore
         return event[dataKey] as NonNullable<UserContext[T]>;

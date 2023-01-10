@@ -26,7 +26,7 @@ const FAKE_STATE_HOST = 'https://fake.state.host';
 
 export type RenderResult = {
     message: string;
-    extra?: { reply_markup?: Partial<InlineKeyboardMarkup> };
+    extra?: { reply_markup?: InlineKeyboardMarkup };
 }; 
 
 export function registerRenderer(
@@ -191,6 +191,9 @@ export async function updateUserScreen(
 
     if (apiResponse.ok) {
         LAST_MESSAGE_IDS.set(chatId, apiResponse.result.message_id);
+    }
+    else {
+        console.error('[TELEGRAM API]: ', apiResponse);
     }
 
     return apiResponse;

@@ -38,6 +38,7 @@ type SpecificState<T extends UserState['value']> = UserState & { value: T };
 type StateRenderer<T extends UserState = UserState> = (state: T) => Promise<RenderResult>;
 
 const handleUserState: StateRenderer = (state) => {
+    console.log(state.value);
     switch(state.value) {
         case 'idle':
             return idleRendered(state);
@@ -47,6 +48,8 @@ const handleUserState: StateRenderer = (state) => {
             return currencySelectionRenderer(state);
         case 'sumSelection':
             return sumSelectionRenderer(state);
+        case 'sumSelectionTimeout':
+            return sumSelectionTimeoutRenderer(state);
         case 'readyToDeposit':
             return readyToDepositRenderer(state);
         case 'deposit':
@@ -88,18 +91,24 @@ async function currencySelectionRenderer(_state: SpecificState<'currencySelectio
     ]);
 }
 
+async function sumSelectionTimeoutRenderer(state: SpecificState<'sumSelectionTimeout'>) {
+    return textWithButtons('Время вышло', [
+        [actionButton('Назад', { type: 'BACK' })],
+    ]);
+}
+
 async function sumSelectionRenderer(state: SpecificState<'sumSelection'>) {
     const exchangeRate = await getExchangeRate(state.context.currency);
 
     return textWithButtons(`Выберите сумму пополнения в ${state.context.currency}`, [
         AVAILABLE_SUMS.map((sum) => {
-            const amount = sum.price * exchangeRate;
+            const price = sum.price * exchangeRate;
 
             return (
-                actionButton(`${amount.toPrecision(2)} (${sum.extraDescription})`, {
+                actionButton(`${price.toFixed(2)} (${sum.extraDescription})`, {
                     type: 'SELECT_AMOUNT',
-                    price: sum.price,
-                    amount,
+                    price,
+                    amount: sum.amount,
                 })
             );
         }),
