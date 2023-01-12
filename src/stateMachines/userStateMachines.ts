@@ -61,6 +61,7 @@ export type UserState =
     };
 
 const userMachine = createMachine<UserContext, UserEvent, UserState>({
+    id: 'userMachine',
     predictableActionArguments: true,
     states: {
         idle: {
@@ -71,17 +72,21 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
         balance: {
             on: {
                 BACK: 'idle',
-                RECHARGE: 'checkIfRefillRequestExist',
+                RECHARGE: 'currencySelection',
             },
-        },
-        checkIfRefillRequestExist: {
-            invoke: {
-                src: 'checkIfRefillRequestExist',
-                onDone: 'currencySelection',
-                onError: 'idle',
-            },
-        },
+        }, 
         currencySelection: {
+            initial: 'pendingValidation',
+            states: {
+                pendingValidation: {
+                    invoke: { // 55:33
+                        src: 'checkIfRefillRequestExist',
+                        onDone: 'validationCompleted',
+                        onError: '#userMachine.idle',
+                    },
+                },
+                validationCompleted: {},
+            },
             on: {
                 BACK: 'balance',
                 SELECT_CURRENCY: {
