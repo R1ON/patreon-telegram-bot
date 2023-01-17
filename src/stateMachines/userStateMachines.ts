@@ -26,6 +26,23 @@ type ReadyToDepositContext = {
     price: number;
 };
 
+type WithUniqueRefillRequestValidator<
+    T extends string,
+    C extends UserContext
+> =
+    | {
+        value: T;
+        context: C;
+    }
+    | {
+        value: { [P in StringLiteral<T>]: "pendingValidation" };
+        context: C;
+    }
+    | {
+        value: { [P in StringLiteral<T>]: "validationCompleted" };
+        context: C;
+    };
+
 export type UserState =
     | {
         value: 'idle';
@@ -35,14 +52,7 @@ export type UserState =
         value: 'balance';
         context: UserContext;
     }
-    | {
-        value: 'checkIfRefillRequestExist';
-        context: UserContext;
-    }
-    | {
-        value: 'currencySelection';
-        context: UserContext;
-    }
+    | WithUniqueRefillRequestValidator<'currencySelection', UserContext>
     | {
         value: 'sumSelection';
         context: UserContext & { currency: string; currencySelectionTime: number };
@@ -79,7 +89,7 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
             initial: 'pendingValidation',
             states: {
                 pendingValidation: {
-                    invoke: { // 55:33
+                    invoke: {
                         src: 'checkIfRefillRequestExist',
                         onDone: 'validationCompleted',
                         onError: '#userMachine.idle',
@@ -191,3 +201,10 @@ type GetKeysFromUnionWithIgnoreSome<T, IgnoreKeys extends string> = T extends Re
         [i in keyof T as i extends IgnoreKeys ? never : i]: T[i];
     }
     : never;
+
+type StringLiteral<T> =
+    T extends string
+        ? string extends T
+            ? never
+            : T
+        : never;

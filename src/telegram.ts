@@ -32,36 +32,58 @@ export async function init(host: string, app: FastifyInstance) {
 
 declare function assertExhaustiveness(arg: never): never;
 
-type SpecificState<T extends UserState['value']> = UserState & { value: T };
+type SpecificState<
+    T extends UserState['value'],
+    S extends UserState = UserState
+> = S extends { value: T } ? S : never;
 type StateRenderer<T extends UserState = UserState> = (state: T) => Promise<RenderResult>;
 
 const handleUserState: StateRenderer = (state) => {
-    switch(state.value) {
-        case 'idle':
-            return idleRendered(state);
-        case 'balance':
-            return balanceRenderer(state);
-        case 'checkIfRefillRequestExist':
-            return Promise.resolve({ message: 'TESTEST' });
-        case 'currencySelection':
-            return currencySelectionRenderer(state);
-        case 'sumSelection':
-            return sumSelectionRenderer(state);
-        case 'sumSelectionTimeout':
-            return sumSelectionTimeoutRenderer(state);
-        case 'readyToDeposit':
-            return readyToDepositRenderer(state);
-        case 'deposit':
-            return depositRenderer(state);
-        default:
-            // assertExhaustiveness(state);
-            return unknownRenderer();
+    if (state.value === 'idle') {
+        return idleRendered(state);
     }
-};
 
-function unknownRenderer() {
-    return Promise.resolve({ message: 'Что-то пошло не так 😒' });
-}
+    if (state.value === 'balance') {
+        return balanceRenderer(state);
+    }
+
+    if (state.value === 'currencySelection') {
+        throw new Error('fix me');
+    }
+
+
+    if (
+        state.value instanceof Object &&
+        state.value.currencySelection === 'pendingValidation'
+    ) {
+        throw new Error('fix me');
+    }
+
+    if (
+        state.value instanceof Object &&
+        state.value.currencySelection === 'validationCompleted'
+    ) {
+        return currencySelectionRenderer(state);
+    }
+
+    if (state.value === 'sumSelection') {
+        return sumSelectionRenderer(state);
+    }
+
+    if (state.value === 'sumSelectionTimeout') {
+        return sumSelectionTimeoutRenderer(state);
+    }
+// 1:29:17 
+    if (state.value === 'readyToDeposit') {
+        return readyToDepositRenderer(state);
+    }
+
+    if (state.value === 'deposit') {
+        return depositRenderer(state);
+    }
+
+    assertExhaustiveness(state.value);
+};
 
 async function idleRendered(state: SpecificState<'idle'>) {
     return textWithButtons(`IDLE ${state.context.user.id}`, [
@@ -78,7 +100,7 @@ async function balanceRenderer(state: SpecificState<'balance'>) {
     ]);
 }
 
-async function currencySelectionRenderer(_state: SpecificState<'currencySelection'>) {
+async function currencySelectionRenderer(_state: UserState) {
     return textWithButtons('Выберите валюту пополнения', [
         AVAILABLE_CURRENCIES.map((currency) => (
             actionButton(currency.description, {
@@ -90,7 +112,7 @@ async function currencySelectionRenderer(_state: SpecificState<'currencySelectio
     ]);
 }
 
-async function sumSelectionTimeoutRenderer(state: SpecificState<'sumSelectionTimeout'>) {
+async function sumSelectionTimeoutRenderer(_state: UserState) {
     return textWithButtons('Время вышло', [
         [actionButton('Назад', { type: 'BACK' })],
     ]);
