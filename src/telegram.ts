@@ -38,7 +38,12 @@ type SpecificState<
 > = S extends { value: T } ? S : never;
 type StateRenderer<T extends UserState = UserState> = (state: T) => Promise<RenderResult>;
 
+// 2:25:23
 const handleUserState: StateRenderer = (state) => {
+    if (isPendingValidationState(state)) {
+        throw new Error('this state should not be rendered');
+    }
+
     if (state.value === 'idle') {
         return idleRendered(state);
     }
@@ -51,16 +56,9 @@ const handleUserState: StateRenderer = (state) => {
         throw new Error('fix me');
     }
 
-
     if (
         state.value instanceof Object &&
-        state.value.currencySelection === 'pendingValidation'
-    ) {
-        throw new Error('fix me');
-    }
-
-    if (
-        state.value instanceof Object &&
+        'currencySelection' in state.value &&
         state.value.currencySelection === 'validationCompleted'
     ) {
         return currencySelectionRenderer(state);
@@ -73,7 +71,7 @@ const handleUserState: StateRenderer = (state) => {
     if (state.value === 'sumSelectionTimeout') {
         return sumSelectionTimeoutRenderer(state);
     }
-// 1:29:17 
+
     if (state.value === 'readyToDeposit') {
         return readyToDepositRenderer(state);
     }
@@ -174,4 +172,20 @@ async function depositRenderer(state: SpecificState<'deposit'>) {
     return textWithButtons(message, [
         [actionButton('Назад', { type: 'BACK' })],
     ]);
+}
+
+// ---
+
+type PendingValidationState<StatePart extends UserState = UserState> =
+    StatePart extends { value: Record<string, 'pendingValidation'> }
+        ? StatePart
+        : never;
+
+function isPendingValidationState(
+    state: UserState,
+): state is PendingValidationState<UserState> {
+    return (
+        state instanceof Object &&
+        Object.values(state.value).includes('pendingValidation')
+    );
 }

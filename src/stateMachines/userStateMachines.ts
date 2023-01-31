@@ -43,32 +43,33 @@ type WithUniqueRefillRequestValidator<
         context: C;
     };
 
+type BaseState<T extends string, C extends UserContext = UserContext> = { value: T; context: C };
+
 export type UserState =
-    | {
-        value: 'idle';
-        context: UserContext;
-    }
-    | {
-        value: 'balance';
-        context: UserContext;
-    }
+    | BaseState<'idle'>
+    | BaseState<'balance'>
     | WithUniqueRefillRequestValidator<'currencySelection', UserContext>
-    | {
-        value: 'sumSelection';
-        context: UserContext & { currency: string; currencySelectionTime: number };
-    }
-    | {
-        value: 'readyToDeposit';
-        context: UserContext & ReadyToDepositContext;
-    }
-    | {
-        value: 'deposit';
-        context: UserContext & ReadyToDepositContext;
-    }
-    | {
-        value: 'sumSelectionTimeout';
-        context: UserContext & ReadyToDepositContext;
-    };
+    | WithUniqueRefillRequestValidator<
+        'sumSelection',
+        UserContext & { currency: string; currencySelectionTime: number }
+    >
+    | WithUniqueRefillRequestValidator<'readyToDeposit',UserContext & ReadyToDepositContext>
+    | WithUniqueRefillRequestValidator<'deposit', UserContext & ReadyToDepositContext>
+    | BaseState<'sumSelectionTimeout', UserContext & ReadyToDepositContext>;
+
+const withUniqRefillRequestValidation = {
+    initial: 'pendingValidation',
+    states: {
+        pendingValidation: {
+            invoke: {
+                src: 'checkIfRefillRequestExist',
+                onDone: 'validationCompleted',
+                onError: '#userMachine.idle',
+            },
+        },
+        validationCompleted: {},
+    },
+};
 
 const userMachine = createMachine<UserContext, UserEvent, UserState>({
     id: 'userMachine',
@@ -86,17 +87,7 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
             },
         }, 
         currencySelection: {
-            initial: 'pendingValidation',
-            states: {
-                pendingValidation: {
-                    invoke: {
-                        src: 'checkIfRefillRequestExist',
-                        onDone: 'validationCompleted',
-                        onError: '#userMachine.idle',
-                    },
-                },
-                validationCompleted: {},
-            },
+            ...withUniqRefillRequestValidation,
             on: {
                 BACK: 'balance',
                 SELECT_CURRENCY: {
@@ -107,6 +98,7 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
         },
         sumSelection: {
             entry: 'saveCurrentTime',
+            ...withUniqRefillRequestValidation,
             on: {
                 BACK: 'currencySelection',
                 SELECT_AMOUNT: [{
@@ -119,12 +111,14 @@ const userMachine = createMachine<UserContext, UserEvent, UserState>({
             },
         },
         readyToDeposit: {
+            ...withUniqRefillRequestValidation,
             on: {
                 BACK: 'sumSelection',
                 OK: 'deposit',
             },
         },
         deposit: {
+            ...withUniqRefillRequestValidation,
             on: {
                 BACK: 'readyToDeposit',
             },
